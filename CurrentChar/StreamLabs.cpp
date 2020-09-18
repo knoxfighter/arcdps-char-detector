@@ -32,34 +32,33 @@ void StreamLabs::setupWebsocket() {
 				if (id == authId) {
 					// react to an authorization
 					if (json_object_get_boolean(messageObject, "result") == 1) {
-						loadCurrentSources();
-						subscribeToSceneServices();
 						authorized = true;
+						loadChatCoverResourceId();
+						subscribeToSceneServices();
 					} else {
 						authorized = false;
 						errorMessage = "Unable to authorize user";
 					}
-				} else if (id == loadSourcesId) {
-					// answer of loading all sources
-					JSON_Object* resultObject = json_object_get_object(messageObject, "result");
-					if (resultObject != nullptr) {
-						processCurrentSources(resultObject);
+				} else if (id == loadChatCoverId) {
+					// answer of getting resourceID
+					JSON_Array* resultArray = json_object_get_array(messageObject, "result");
+					if (resultArray != nullptr) {
+						for (size_t i = 0; i < json_array_get_count(resultArray); ++i) {
+							JSON_Object* resultObject = json_array_get_object(resultArray, i);
+							
+							const char* resourceId = json_object_get_string(resultObject, "resourceId");
+							if (resourceId != nullptr) {
+								chatCoverResourceId = replaceString(resourceId, "\"", "\\\"");
+								changeResourceLocalFile();
+								break;
+							}
+						}
 					}
 				} else if (id == 0) {
 					// no id provided, see if this is an even
 					JSON_Object* resultObject = json_object_get_object(messageObject, "result");
 					if (std::string(json_object_get_string(resultObject, "_type")) == "EVENT") {
-						if (std::string(json_object_get_string(resultObject, "resourceId")) == "ScenesService.sceneSwitched") {
-							// the scene is switched, so reload the scene and run visibility
-							JSON_Object* dataObject = json_object_get_object(resultObject, "data");
-							processCurrentSources(dataObject);
-						} else if (std::string(json_object_get_string(resultObject, "resourceId")) == "ScenesService.itemAdded") {
-							// an item was added to the scene
-							loadCurrentSources();
-						} else if (std::string(json_object_get_string(resultObject, "resourceId")) == "ScenesService.itemUpdated") {
-							// an item in the scene got updated
-							loadCurrentSources();
-						}
+						
 					}
 				}
 				break;
@@ -91,74 +90,39 @@ void StreamLabs::setupWebsocket() {
 	webSocket.start();
 }
 
-void StreamLabs::loadCurrentSources() {
-	loadSourcesId = ++nextId;
-	char buf[1024] = {};
-	snprintf(buf, 1024,
-	         R"({"jsonrpc": "2.0","id": %u,"method": "activeScene","params": {"resource": "ScenesService"}})",
-	         loadSourcesId);
-	webSocket.send(buf);
-}
-
-void StreamLabs::processCurrentSources(JSON_Object* result) {
-	// get the nodes array, nodes is an array of objects, that contain all information to a scene element
-	JSON_Array* nodes = json_object_get_array(result, "nodes");
-
-	// clear previous sources
-	sources.clear();
-
-	// save new sources into the array
-	for (size_t i = 0; i < json_array_get_count(nodes); ++i) {
-		JSON_Object* node = json_array_get_object(nodes, i);
-		const char* name = json_object_get_string(node, "name");
-		std::string resourceId = json_object_get_string(node, "resourceId");
-
-		sources.insert({name, resourceId});
+void StreamLabs::loadChatCoverResourceId() {
+	if (!isAuthorized()) {
+		return;
 	}
-
-	updateVisibility();
-}
-
-void StreamLabs::updateVisibility() {
-	// dont run if not authorized
-	if (!authorized) return;
-
-	// get sourceName for current Character
+	
 	Settings& settings = Settings::instance();
-	const std::vector<Settings::Character>& characters = settings.getCharacters();
-	std::string characterSourceName;
-	for (const Settings::Character& character : characters) {
-		if (character.charName == currentCharacter) {
-			characterSourceName = character.sourceName;
-			break;
-		}
+	const std::string& sourceName = settings.getChatCoverSourceName();
+	
+	if (!sourceName.empty()) {
+		loadChatCoverId = ++nextId;
+		char buf[1024] = {};
+		snprintf(buf, 1024,
+			R"({"jsonrpc": "2.0","id": %u,"method": "getSourcesByName","params": {"resource": "SourcesService","args": ["%s"]}})",
+			loadChatCoverId, sourceName.c_str());
+		webSocket.send(buf);
 	}
+}
 
-	// show only the correct sources
-	// dont do anything, if the currentCharacter has no source to it or the source is not in the active scene
-	if (!characterSourceName.empty() && sources.contains(characterSourceName)) {
-		for (const auto& [charName, sourceName] : characters) {
-			if (sources.contains(sourceName)) {
-				auto resourceId = sources.at(sourceName);
-				// set Visibility
-				char buf[4096] = {};
-
-				// replace single backslashes to double backslashes, so they will get sent correctly
-				std::string toReplace = "\"";
-				std::string toInsert = "\\\"";
-				// Get the first occurrence
-				size_t pos = resourceId.find(toReplace);
-				// Repeat till end is reached
-				while (pos != std::string::npos) {
-					resourceId.replace(pos, toReplace.size(), toInsert);
-					// Get the next occurrence from the current position
-					pos = resourceId.find(toReplace, pos + toInsert.size());
+void StreamLabs::changeResourceLocalFile() {
+	if (!chatCoverResourceId.empty()) {
+		Settings& settings = Settings::instance();
+		const std::vector<Settings::Character>& characters = settings.getCharacters();
+		for (const auto& character : characters) {
+			if (character.charName == currentCharacter) {
+				if (!character.filePath.empty()) {
+					std::string filePath = replaceString(character.filePath, "\\", "\\\\");
+					
+					char buf[2048];
+					snprintf(buf, 2048,
+						R"({"jsonrpc": "2.0","id": %u,"method": "updateSettings","params": {"resource": "%s","args": [{"local_file": "%s"}]}})",
+						++nextId, chatCoverResourceId.c_str(), filePath.c_str());
+					webSocket.send(buf);
 				}
-
-				snprintf(buf, 4096,
-				         R"({"jsonrpc": "2.0","id": %u,"method": "setVisibility","params": {"resource": "%s","args": [%s]}})",
-				         ++nextId, resourceId.c_str(), characterSourceName == sourceName ? "true" : "false");
-				webSocket.send(buf);
 			}
 		}
 	}
@@ -173,9 +137,24 @@ void StreamLabs::subscribeToSceneService(const std::string& method) {
 }
 
 void StreamLabs::subscribeToSceneServices() {
-	subscribeToSceneService("sceneSwitched");
-	subscribeToSceneService("itemAdded");
-	subscribeToSceneService("itemUpdated");
+	// subscribeToSceneService("sceneSwitched");
+	// subscribeToSceneService("itemAdded");
+	// subscribeToSceneService("itemUpdated");
+}
+
+std::string StreamLabs::replaceString(const std::string& str, const std::string& toReplace, const std::string& toInsert) {
+	std::string newStr = str;
+	
+	// Get the first occurrence
+	size_t pos = str.find(toReplace);
+	// Repeat till end is reached
+	while (pos != std::string::npos) {
+		newStr.replace(pos, toReplace.size(), toInsert);
+		// Get the next occurrence from the current position
+		pos = newStr.find(toReplace, pos + toInsert.size());
+	}
+
+	return newStr;
 }
 
 void StreamLabs::sendAuth() {

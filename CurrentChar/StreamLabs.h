@@ -5,6 +5,8 @@
 
 #include "parson.h"
 
+#define UID uint16_t
+
 class StreamLabs {
 public:
 	static StreamLabs& instance();
@@ -34,9 +36,11 @@ public:
 		const bool reload = this->currentCharacter != newCharacter;
 		this->currentCharacter = newCharacter;
 		if (reload) {
-			updateVisibility();
+			changeResourceLocalFile();
 		}
 	}
+
+	void loadChatCoverResourceId();
 
 private:
 	// copy/move etc. will be deleted implicitly
@@ -48,28 +52,25 @@ private:
 	bool connectionEstablished = false;
 
 	// unique ID for every json-rpc call
-	uint16_t nextId = 1;
+	UID nextId = 1;
 
 	// last id for an auth call
-	uint16_t authId = 0;
+	UID authId = 0;
 	bool authorized = false;
 
-	// load sources of the active scene
-	void loadCurrentSources();
-	uint16_t loadSourcesId = 0;
-
-	// process active scenes elements
-	void processCurrentSources(JSON_Object* result);
-	// Key is "name", value is "resourceId"
-	std::unordered_map<std::string, std::string> sources;
+	// Save the ChatCover ResourceId
+	std::string chatCoverResourceId;
+	UID loadChatCoverId = 0;
 
 	// tracking
 	std::string username;
 	std::string currentCharacter;
 
-	// change Visibility of all defined elements
-	void updateVisibility();
+	// change local file of resource
+	void changeResourceLocalFile();
 
 	void subscribeToSceneService(const std::string& method);
 	void subscribeToSceneServices();
+
+	std::string replaceString(const std::string& str, const std::string& toReplace, const std::string& toInsert);
 };

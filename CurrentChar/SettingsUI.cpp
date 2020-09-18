@@ -3,8 +3,12 @@
 #include "Settings.h"
 #include "StreamLabs.h"
 
+#define windowWidth 800
+#define leftItemWidth  200
+#define rightItemWidth 600
+
 void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
-	ImGui::SetNextWindowSize(ImVec2(550, 650), ImGuiSetCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(windowWidth, 650), ImGuiSetCond_FirstUseEver);
 	ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(150, 50));
 	ImGui::Begin(title, p_open, flags);
 
@@ -16,20 +20,22 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 	if (streamLabs.isAuthorized()) {
 		ImGui::TextColored(ImVec4{0, 1, 0, 1}, "WebSocket connected and authorized");
 	} else if (streamLabs.isConnectionEstablished()) {
-		ImGui::TextColored(ImVec4{0, 1, 0, 1}, "WebSocket connected");
+		ImGui::TextColored(ImVec4{1, 1, 0, 1}, "WebSocket connected");
 	}
 
 	Settings& settings = Settings::instance();
 
 	// show StreamLab token password field
-	strcpy(tokenBuffer, settings.getStreamLabsToken().c_str());
+	strcpy(tokenBuffer, settings.streamLabsToken.c_str());
 	if (ImGui::InputText("Streamlabs OBS token", tokenBuffer, sizeof tokenBuffer, ImGuiInputTextFlags_Password)) {
 		settings.setStreamLabsToken(tokenBuffer);
 	}
 
-	// define item width for following items
-	auto itemWidth = ImGui::GetWindowWidth() / 5.0f * 2.3f;
-	ImGui::PushItemWidth(itemWidth);
+	// show streamLab ChatCover Source name field
+	strcpy(sourceNameBuffer, settings.chatCoverSourceName.c_str());
+	if (ImGui::InputText("ChatCover Source Name", sourceNameBuffer, sizeof sourceNameBuffer)) {
+		settings.chatCoverSourceName = sourceNameBuffer;
+	}
 
 	std::vector<Settings::Character>& characters = settings.characters;
 
@@ -38,9 +44,9 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 		ImGui::Text("Character name");
 		ImGui::SameLine();
 		ImVec2 currentPos = ImGui::GetCursorPos();
-		currentPos.x = itemWidth + 10;
+		currentPos.x = leftItemWidth + 10;
 		ImGui::SetCursorPos(currentPos);
-		ImGui::Text("streamlabs source name");
+		ImGui::Text("filePath to local video");
 	}
 
 	std::vector<size_t> toRemove{};
@@ -48,6 +54,9 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 	for (size_t i = 0; i < characters.size(); ++i) {
 		Settings::Character& character = characters[i];
 
+		// Set elementWidth
+		ImGui::PushItemWidth(leftItemWidth);
+		
 		// set new sourcesBuffer if needed
 		if (bufferPos >= sourcesBuffer.size()) {
 			char* addBuffer = new char[128];
@@ -65,22 +74,31 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 		// Set the sourcesBuffer to the next sourcesBuffer element
 		++bufferPos;
 
+		// Unset elementWidth
+		ImGui::PopItemWidth();
+
 		ImGui::SameLine();
 
+		// set Element width
+		ImGui::PushItemWidth(rightItemWidth);
+		
 		// repeat once for streamlabs source name
 		if (bufferPos >= sourcesBuffer.size()) {
 			char* addBuffer = new char[128];
 			memset(addBuffer, 0, 128);
-			strcpy(addBuffer, character.sourceName.c_str());
+			strcpy(addBuffer, character.filePath.c_str());
 			sourcesBuffer.push_back(addBuffer);
 		}
 		id = "##";
 		id += std::to_string(bufferPos);
 		if (ImGui::InputText(id.c_str(), sourcesBuffer[bufferPos], 128)) {
 			// value modified
-			character.sourceName = sourcesBuffer[bufferPos];
+			character.filePath = sourcesBuffer[bufferPos];
 		}
 		++bufferPos;
+
+		// unset element width
+		ImGui::PopItemWidth();
 
 		ImGui::SameLine();
 
@@ -99,8 +117,6 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 		auto remBegin = sourcesBuffer.begin() + (*it * 2);
 		sourcesBuffer.erase(remBegin, remBegin + 2);
 	}
-
-	ImGui::PopItemWidth();
 
 	if (ImGui::Button("+", ImVec2(20, 20))) {
 		// add element to sources

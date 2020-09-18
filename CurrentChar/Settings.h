@@ -12,7 +12,7 @@ class Settings
 public:
     struct Character {
         std::string charName;
-        std::string sourceName;
+        std::string filePath;
     };
 
     static Settings& instance();
@@ -23,6 +23,10 @@ public:
 	    return streamLabsToken;
     }
     void setStreamLabsToken(const std::string& streamLabsToken);
+	[[nodiscard]] const std::string& getChatCoverSourceName() const {
+		return chatCoverSourceName;
+	}
+	void setChatCoverSourceName(const std::string& chatCoverSourceName);
 
 private:
     // copy/move etc. will be deleted implicitly
@@ -32,6 +36,7 @@ private:
     void readFromFile();
 
     std::vector<Character> characters {};
-    std::string streamLabsToken;
+	std::string streamLabsToken;
+	std::string chatCoverSourceName;
 };
 
