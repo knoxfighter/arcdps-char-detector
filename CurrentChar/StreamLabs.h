@@ -45,6 +45,7 @@ public:
 private:
 	// copy/move etc. will be deleted implicitly
 	StreamLabs();
+	~StreamLabs();
 
 	// ws setup / connect
 	void setupWebsocket();

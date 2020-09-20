@@ -13,12 +13,18 @@ StreamLabs::StreamLabs() {
 	setupWebsocket();
 }
 
+StreamLabs::~StreamLabs() {
+	webSocket.stop();
+}
+
 void StreamLabs::setupWebsocket() {
 	// Required on Windows
 	ix::initNetSystem();
 
 	std::string url("ws://127.0.0.1:59650/api/websocket");
 	webSocket.setUrl(url);
+
+	webSocket.setMaxWaitBetweenReconnectionRetries(120 * 1000); // 120 * 1000 = 120s
 
 	// Setup a callback to be fired (in a background thread, watch out for race conditions !)
 	// when a message or an event (open, close, error) is received
@@ -61,6 +67,7 @@ void StreamLabs::setupWebsocket() {
 						
 					}
 				}
+				json_value_free(messageValue);
 				break;
 			}
 		case ix::WebSocketMessageType::Open:

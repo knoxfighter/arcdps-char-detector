@@ -155,10 +155,6 @@ uintptr_t mod_wnd(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 /* combat callback -- may be called asynchronously. return ignored */
 /* one participant will be party/squad, or minion of. no spawn statechange events. despawn statechange only on marked boss npcs */
 uintptr_t mod_combat(cbtevent* ev, ag* src, ag* dst, char* skillname, uint64_t id, uint64_t revision) {
-	/* big buffer */
-	char buff[4096];
-	char* p = &buff[0];
-
 	/* ev is null. dst will only be valid on tracking add. skillname will also be null */
 	if (!ev) {
 

@@ -59,8 +59,7 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 		
 		// set new sourcesBuffer if needed
 		if (bufferPos >= sourcesBuffer.size()) {
-			char* addBuffer = new char[128];
-			memset(addBuffer, 0, 128);
+			char* addBuffer = new char[128]();
 			strcpy(addBuffer, character.charName.c_str());
 			sourcesBuffer.push_back(addBuffer);
 		}
@@ -84,8 +83,7 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 		
 		// repeat once for streamlabs source name
 		if (bufferPos >= sourcesBuffer.size()) {
-			char* addBuffer = new char[128];
-			memset(addBuffer, 0, 128);
+			char* addBuffer = new char[128]();
 			strcpy(addBuffer, character.filePath.c_str());
 			sourcesBuffer.push_back(addBuffer);
 		}
@@ -113,7 +111,17 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 	// Delete Elements, that we dont need anymore
 	// run from back to beginning, so vector position dont get messed up
 	for (auto it = toRemove.rbegin(); it != toRemove.rend(); ++it) {
+		// remove element from characters list
 		characters.erase(characters.begin() + *it);
+
+		bufferPos = (*it) * 2;
+		// delete the buffers pointer
+		char* buffer = sourcesBuffer.at(bufferPos);
+		delete[] buffer;
+		buffer = sourcesBuffer.at(bufferPos + 1);
+		delete[] buffer;
+
+		// remove elements from sources buffer
 		auto remBegin = sourcesBuffer.begin() + (*it * 2);
 		sourcesBuffer.erase(remBegin, remBegin + 2);
 	}
@@ -125,4 +133,11 @@ void SettingsUI::draw(const char* title, bool* p_open, ImGuiWindowFlags flags) {
 
 	ImGui::End();
 	ImGui::PopStyleVar(1);
+}
+
+SettingsUI::~SettingsUI() {
+	// free the vector manually, cause it will not free the pointers itself
+	for (char* buffer : sourcesBuffer) {
+		delete[] buffer;
+	}
 }
