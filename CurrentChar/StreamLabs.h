@@ -1,11 +1,14 @@
 #pragma once
 
+#include <memory>
 #include <string>
-#include <ixwebsocket/IXWebSocket.h>
+#include <thread>
 
-#include "parson.h"
+#include "easywsclient/easywsclient.hpp"
 
 #define UID uint16_t
+
+using easywsclient::WebSocket;
 
 class StreamLabs {
 public:
@@ -48,8 +51,10 @@ private:
 	~StreamLabs();
 
 	// ws setup / connect
-	void setupWebsocket();
-	ix::WebSocket webSocket;
+	void runWebsocket();
+	std::shared_ptr<WebSocket> websocket;
+	std::thread websocketThread;
+	bool websocketCancel = false;
 	bool connectionEstablished = false;
 
 	// unique ID for every json-rpc call

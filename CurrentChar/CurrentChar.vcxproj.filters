@@ -19,6 +19,12 @@
     <Filter Include="Quelldateien\imgui">
       <UniqueIdentifier>{c2247ed3-d49f-4fb9-84a4-697422e36387}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Headerdateien\easywsclient">
+      <UniqueIdentifier>{8c2001e3-ef0b-4fdf-adbe-0fec24fbed41}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Quelldateien\easywsclient">
+      <UniqueIdentifier>{6a3f80e5-e6ef-4bbc-9d18-a298e7cf89e9}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="arcdps_structs.h">
@@ -54,6 +60,9 @@
     <ClInclude Include="StreamLabs.h">
       <Filter>Headerdateien</Filter>
     </ClInclude>
+    <ClInclude Include="easywsclient\easywsclient.hpp">
+      <Filter>Headerdateien\easywsclient</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp">
@@ -79,6 +88,9 @@
     </ClCompile>
     <ClCompile Include="StreamLabs.cpp">
       <Filter>Quelldateien</Filter>
+    </ClCompile>
+    <ClCompile Include="easywsclient\easywsclient.cpp">
+      <Filter>Quelldateien\easywsclient</Filter>
     </ClCompile>
   </ItemGroup>
 </Project>

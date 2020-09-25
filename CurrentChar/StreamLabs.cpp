@@ -1,7 +1,8 @@
 #include "StreamLabs.h"
 
-#include <ixwebsocket/IXNetSystem.h>
+#include <WinSock2.h>
 
+#include "parson.h"
 #include "Settings.h"
 
 StreamLabs& StreamLabs::instance() {
@@ -10,29 +11,58 @@ StreamLabs& StreamLabs::instance() {
 }
 
 StreamLabs::StreamLabs() {
-	setupWebsocket();
+	websocketThread = std::thread(&StreamLabs::runWebsocket, this);
+	websocketThread.detach();
 }
 
 StreamLabs::~StreamLabs() {
-	webSocket.stop();
+	websocketCancel = true;
+	if (websocketThread.joinable()) {
+		websocketThread.join();
+	}
 }
 
-void StreamLabs::setupWebsocket() {
-	// Required on Windows
-	ix::initNetSystem();
+void StreamLabs::runWebsocket() {
+	INT rc;
+	WSADATA wsaData;
 
-	std::string url("ws://127.0.0.1:59650/api/websocket");
-	webSocket.setUrl(url);
+	rc = WSAStartup(MAKEWORD(2, 2), &wsaData);
+	if (rc) {
+		errorMessage = "WSAStartup Failed!";
+		return;
+	}
 
-	webSocket.setMaxWaitBetweenReconnectionRetries(120 * 1000); // 120 * 1000 = 120s
+	while (true) {
+		if (websocketCancel) {
+			break;
+		}
+		
+		std::string error;
+		websocket = WebSocket::from_url("ws://127.0.0.1:59650/api/websocket", error);
+		if (websocket == nullptr) {
+			// some error occured while connecting
+			if (error.empty()) {
+				errorMessage = "Some unknown error occured :(";
+			}
+			else {
+				errorMessage = error;
+			}
 
-	// Setup a callback to be fired (in a background thread, watch out for race conditions !)
-	// when a message or an event (open, close, error) is received
-	webSocket.setOnMessageCallback([this](const ix::WebSocketMessagePtr& msg) {
-		switch (msg->type) {
-		case ix::WebSocketMessageType::Message:
-			{
-				JSON_Value* messageValue = json_parse_string(msg->str.c_str());
+			std::this_thread::sleep_for(std::chrono::seconds(30));
+			continue;
+		}
+
+		connectionEstablished = true;
+		sendAuth();
+		
+		while (websocket->getReadyState() != WebSocket::CLOSED) {
+			if (websocketCancel) {
+				websocket->close();
+			}
+
+			websocket->poll(errorMessage);
+			websocket->dispatch([this](const std::string& message) {
+				JSON_Value* messageValue = json_parse_string(message.c_str());
 				JSON_Object* messageObject = json_value_get_object(messageValue);
 				double id = json_object_get_number(messageObject, "id");
 				if (id == authId) {
@@ -41,17 +71,19 @@ void StreamLabs::setupWebsocket() {
 						authorized = true;
 						loadChatCoverResourceId();
 						subscribeToSceneServices();
-					} else {
+					}
+					else {
 						authorized = false;
 						errorMessage = "Unable to authorize user";
 					}
-				} else if (id == loadChatCoverId) {
+				}
+				else if (id == loadChatCoverId) {
 					// answer of getting resourceID
 					JSON_Array* resultArray = json_object_get_array(messageObject, "result");
 					if (resultArray != nullptr) {
 						for (size_t i = 0; i < json_array_get_count(resultArray); ++i) {
 							JSON_Object* resultObject = json_array_get_object(resultArray, i);
-							
+
 							const char* resourceId = json_object_get_string(resultObject, "resourceId");
 							if (resourceId != nullptr) {
 								chatCoverResourceId = replaceString(resourceId, "\"", "\\\"");
@@ -60,41 +92,25 @@ void StreamLabs::setupWebsocket() {
 							}
 						}
 					}
-				} else if (id == 0) {
+				}
+				else if (id == 0) {
 					// no id provided, see if this is an even
 					JSON_Object* resultObject = json_object_get_object(messageObject, "result");
 					if (std::string(json_object_get_string(resultObject, "_type")) == "EVENT") {
-						
+
 					}
 				}
-				json_value_free(messageValue);
-				break;
-			}
-		case ix::WebSocketMessageType::Open:
-			{
-				connectionEstablished = true;
-				sendAuth();
-				break;
-			}
-		case ix::WebSocketMessageType::Error:
-			{
-				errorMessage = msg->errorInfo.reason;
-				connectionEstablished = false;
-				authorized = false;
-				break;
-			}
-		case ix::WebSocketMessageType::Close:
-			{
-				errorMessage = msg->closeInfo.reason;
-				connectionEstablished = false;
-				authorized = false;
-				break;
-			}
-		}
-	});
+			});
 
-	// Now that our callback is setup, we can start our background thread and receive messages
-	webSocket.start();
+			std::this_thread::sleep_for(std::chrono::milliseconds(500));
+		}
+
+		// websocket closed, reset connection and authorization
+		connectionEstablished = false;
+		authorized = false;
+	}
+
+	WSACleanup();
 }
 
 void StreamLabs::loadChatCoverResourceId() {
@@ -111,7 +127,7 @@ void StreamLabs::loadChatCoverResourceId() {
 		snprintf(buf, 1024,
 			R"({"jsonrpc": "2.0","id": %u,"method": "getSourcesByName","params": {"resource": "SourcesService","args": ["%s"]}})",
 			loadChatCoverId, sourceName.c_str());
-		webSocket.send(buf);
+		websocket->send(buf);
 	}
 }
 
@@ -128,7 +144,7 @@ void StreamLabs::changeResourceLocalFile() {
 					snprintf(buf, 2048,
 						R"({"jsonrpc": "2.0","id": %u,"method": "updateSettings","params": {"resource": "%s","args": [{"local_file": "%s"}]}})",
 						++nextId, chatCoverResourceId.c_str(), filePath.c_str());
-					webSocket.send(buf);
+					websocket->send(buf);
 				}
 			}
 		}
@@ -140,7 +156,7 @@ void StreamLabs::subscribeToSceneService(const std::string& method) {
 	snprintf(buf, 1024,
 	         R"({"jsonrpc": "2.0","id": %u,"method": "%s","params": {"resource": "ScenesService","args": []}})",
 	         ++nextId, method.c_str());
-	webSocket.send(buf);
+	websocket->send(buf);
 }
 
 void StreamLabs::subscribeToSceneServices() {
@@ -171,5 +187,5 @@ void StreamLabs::sendAuth() {
 	snprintf(buf, 4096,
 	         R"({"jsonrpc":"2.0","id":%u,"method":"auth","params":{"resource":"TcpServerService","args":["%s"]}})",
 	         authId, token.c_str());
-	webSocket.send(buf);
+	websocket->send(buf);
 }
